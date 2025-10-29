@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Upload, FileJson, FileText, Download, Copy, Trash2, Plus, ChevronDown } from 'lucide-react'
+import { Upload, FileJson, FileText, Download, Copy, Trash2, Plus, ChevronDown, Link as LinkIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -87,6 +88,7 @@ export default function LiteratureAnalysisApp() {
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [activeTab, setActiveTab] = useState('markdown')
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null)
+  const [urlInput, setUrlInput] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -146,6 +148,32 @@ export default function LiteratureAnalysisApp() {
 
   const removeFile = (id: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  const addUrl = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!urlInput.trim()) return
+
+    const url = urlInput.trim()
+
+    // Validate URL format
+    try {
+      new URL(url)
+    } catch {
+      console.error('Invalid URL format')
+      setUrlInput('')
+      return
+    }
+
+    const newFile: UploadedFile = {
+      id: `${Date.now()}-${Math.random()}`,
+      name: url,
+      type: 'url',
+      content: url,
+    }
+
+    setFiles((prev) => [...prev, newFile])
+    setUrlInput('')
   }
 
   const generateReview = async () => {
@@ -293,6 +321,35 @@ export default function LiteratureAnalysisApp() {
                     Select Files
                   </Button>
                 </div>
+
+                {/* URL Input Form */}
+                <form onSubmit={addUrl} className="mt-6 space-y-3">
+                  <h3 className="font-medium" style={{ color: '#f1f5f9' }}>
+                    Or add web links
+                  </h3>
+                  <div className="flex gap-2">
+                    <Input
+                      type="url"
+                      placeholder="https://example.com/paper"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      className="flex-1 bg-gray-800 border-gray-700 text-white placeholder-gray-500"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="border-gray-600 hover:bg-gray-700"
+                      variant="outline"
+                      disabled={!urlInput.trim()}
+                    >
+                      <LinkIcon className="w-4 h-4 mr-2" />
+                      Add Link
+                    </Button>
+                  </div>
+                  <p className="text-xs" style={{ color: '#94a3b8' }}>
+                    Enter research paper URLs (DOI links, journal articles, preprints)
+                  </p>
+                </form>
 
                 {/* File List */}
                 {files.length > 0 && (
