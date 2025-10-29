@@ -89,6 +89,7 @@ export default function LiteratureAnalysisApp() {
   const [activeTab, setActiveTab] = useState('markdown')
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragEnter = (e: React.DragEvent) => {
@@ -180,6 +181,7 @@ export default function LiteratureAnalysisApp() {
     if (files.length === 0) return
 
     setLoading(true)
+    setError(null)
     try {
       const formattedInput = files.map((f) => `[${f.type.toUpperCase()}]: ${f.content}`).join('\n\n')
 
@@ -194,14 +196,36 @@ export default function LiteratureAnalysisApp() {
 
       const data = await response.json()
 
-      if (data.success && data.response) {
-        const parsed =
-          typeof data.response === 'string' ? JSON.parse(data.response) : data.response
-
-        setResult(parsed)
+      if (!data.success) {
+        setError(data.error || 'Failed to generate review')
+        return
       }
+
+      if (!data.response) {
+        setError('No response from agent')
+        return
+      }
+
+      let parsed: AnalysisResult
+      try {
+        parsed =
+          typeof data.response === 'string' ? JSON.parse(data.response) : data.response
+      } catch (parseError) {
+        console.error('Parse error:', parseError, 'Response:', data.response)
+        setError('Failed to parse agent response')
+        return
+      }
+
+      // Validate the parsed result has required fields
+      if (!parsed || !parsed.metadata) {
+        setError('Invalid response format - missing metadata')
+        return
+      }
+
+      setResult(parsed)
     } catch (error) {
       console.error('Error generating review:', error)
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred')
     } finally {
       setLoading(false)
     }
@@ -272,6 +296,26 @@ export default function LiteratureAnalysisApp() {
       </div>
 
       <div className="max-w-7xl mx-auto">
+        {error && (
+          <div className="m-6 p-4 rounded-lg border border-red-500 bg-red-900/20">
+            <p style={{ color: '#fca5a5' }} className="font-medium">
+              Error
+            </p>
+            <p style={{ color: '#fecaca' }} className="text-sm mt-1">
+              {error}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setError(null)}
+              className="mt-3 border-red-600 hover:bg-red-900/30"
+              style={{ color: '#fca5a5' }}
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+
         {!result ? (
           /* Upload Zone */
           <div className="grid grid-cols-3 gap-6 p-6">
@@ -511,76 +555,84 @@ export default function LiteratureAnalysisApp() {
         ) : (
           /* Results Dashboard */
           <div className="p-6">
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold" style={{ color: '#f1f5f9' }}>
-                    Analysis Results
-                  </h2>
-                  <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>
-                    {result.metadata.total_papers} papers analyzed •{' '}
-                    {result.metadata.generated_date}
-                  </p>
+            {result && (
+              <>
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: '#f1f5f9' }}>
+                        Analysis Results
+                      </h2>
+                      <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>
+                        {result.metadata?.total_papers ?? 0} papers analyzed •{' '}
+                        {result.metadata?.generated_date ?? 'N/A'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setResult(null)
+                        setFiles([])
+                      }}
+                      className="border-gray-600 hover:bg-gray-700"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Analysis
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setResult(null)
-                    setFiles([])
-                  }}
-                  className="border-gray-600 hover:bg-gray-700"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Analysis
-                </Button>
-              </div>
-            </div>
 
-            {/* Summary Statistics */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <Card className="p-4 border-gray-700 bg-gray-900">
-                <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
-                  Year Range
-                </p>
-                <p className="text-lg font-bold mt-2" style={{ color: '#84cc16' }}>
-                  {result.metadata.summary_statistics.year_range}
-                </p>
-              </Card>
-              <Card className="p-4 border-gray-700 bg-gray-900">
-                <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
-                  Research Themes
-                </p>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {result.metadata.summary_statistics.research_themes.slice(0, 3).map((t) => (
-                    <Badge
-                      key={t}
-                      variant="secondary"
-                      className="text-xs"
-                      style={{ backgroundColor: '#1e3a8a', color: '#93c5fd' }}
-                    >
-                      {t}
-                    </Badge>
-                  ))}
+                {/* Summary Statistics */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <Card className="p-4 border-gray-700 bg-gray-900">
+                    <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
+                      Year Range
+                    </p>
+                    <p className="text-lg font-bold mt-2" style={{ color: '#84cc16' }}>
+                      {result.metadata?.summary_statistics?.year_range ?? 'N/A'}
+                    </p>
+                  </Card>
+                  <Card className="p-4 border-gray-700 bg-gray-900">
+                    <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
+                      Research Themes
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {(result.metadata?.summary_statistics?.research_themes ?? [])
+                        .slice(0, 3)
+                        .map((t) => (
+                          <Badge
+                            key={t}
+                            variant="secondary"
+                            className="text-xs"
+                            style={{ backgroundColor: '#1e3a8a', color: '#93c5fd' }}
+                          >
+                            {t}
+                          </Badge>
+                        ))}
+                    </div>
+                  </Card>
+                  <Card className="p-4 border-gray-700 bg-gray-900">
+                    <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
+                      Methodologies
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {(result.metadata?.summary_statistics?.methodologies ?? [])
+                        .slice(0, 3)
+                        .map((m) => (
+                          <Badge
+                            key={m}
+                            variant="secondary"
+                            className="text-xs"
+                            style={{ backgroundColor: '#6b21a8', color: '#d8b4fe' }}
+                          >
+                            {m}
+                          </Badge>
+                        ))}
+                    </div>
+                  </Card>
                 </div>
-              </Card>
-              <Card className="p-4 border-gray-700 bg-gray-900">
-                <p className="text-xs font-medium uppercase" style={{ color: '#94a3b8' }}>
-                  Methodologies
-                </p>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {result.metadata.summary_statistics.methodologies.slice(0, 3).map((m) => (
-                    <Badge
-                      key={m}
-                      variant="secondary"
-                      className="text-xs"
-                      style={{ backgroundColor: '#6b21a8', color: '#d8b4fe' }}
-                    >
-                      {m}
-                    </Badge>
-                  ))}
-                </div>
-              </Card>
-            </div>
+              </>
+            )}
 
             {/* Tabs for Markdown and JSON */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
@@ -608,8 +660,9 @@ export default function LiteratureAnalysisApp() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => copyToClipboard(result.markdown_output, 'markdown')}
+                      onClick={() => copyToClipboard(result?.markdown_output ?? '', 'markdown')}
                       className="border-gray-600 hover:bg-gray-700"
+                      disabled={!result?.markdown_output}
                     >
                       <Copy className="w-4 h-4 mr-2" />
                       {copiedIndex === 'markdown' ? 'Copied' : 'Copy'}
@@ -620,7 +673,7 @@ export default function LiteratureAnalysisApp() {
                       className="text-xs font-mono whitespace-pre-wrap"
                       style={{ color: '#cbd5e1' }}
                     >
-                      {result.markdown_output}
+                      {result?.markdown_output ?? 'No markdown output available'}
                     </pre>
                   </ScrollArea>
                 </Card>
@@ -637,9 +690,10 @@ export default function LiteratureAnalysisApp() {
                       size="sm"
                       variant="outline"
                       onClick={() =>
-                        copyToClipboard(JSON.stringify(result.json_output, null, 2), 'json')
+                        copyToClipboard(JSON.stringify(result?.json_output ?? {}, null, 2), 'json')
                       }
                       className="border-gray-600 hover:bg-gray-700"
+                      disabled={!result?.json_output}
                     >
                       <Copy className="w-4 h-4 mr-2" />
                       {copiedIndex === 'json' ? 'Copied' : 'Copy'}
@@ -650,7 +704,7 @@ export default function LiteratureAnalysisApp() {
                       className="text-xs font-mono whitespace-pre-wrap"
                       style={{ color: '#cbd5e1' }}
                     >
-                      {JSON.stringify(result.json_output, null, 2)}
+                      {JSON.stringify(result?.json_output ?? {}, null, 2)}
                     </pre>
                   </ScrollArea>
                 </Card>
@@ -675,7 +729,7 @@ export default function LiteratureAnalysisApp() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {result.json_output.comparative_analysis_table.map((row, idx) => (
+                        {(result?.json_output?.comparative_analysis_table ?? []).map((row, idx) => (
                           <TableRow
                             key={idx}
                             className="border-b border-gray-700 hover:bg-gray-800/50"
@@ -698,11 +752,12 @@ export default function LiteratureAnalysisApp() {
             </Tabs>
 
             {/* Papers Details */}
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg" style={{ color: '#f1f5f9' }}>
-                Paper Summaries
-              </h3>
-              {result.json_output.papers.map((paper, idx) => (
+            {result && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg" style={{ color: '#f1f5f9' }}>
+                  Paper Summaries
+                </h3>
+                {(result.json_output?.papers ?? []).map((paper, idx) => (
                 <Collapsible key={idx} className="border border-gray-700 rounded-lg">
                   <CollapsibleTrigger className="w-full p-4 hover:bg-gray-800 flex items-start justify-between">
                     <div className="text-left flex-1">
@@ -760,8 +815,9 @@ export default function LiteratureAnalysisApp() {
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
